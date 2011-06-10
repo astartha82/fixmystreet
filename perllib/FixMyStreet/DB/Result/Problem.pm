@@ -78,6 +78,8 @@ __PACKAGE__->add_columns(
   { data_type => "timestamp", is_nullable => 1 },
   "send_questionnaire",
   { data_type => "boolean", default_value => \"true", is_nullable => 0 },
+  "flagged",
+  { data_type => "boolean", default_value => \"false", is_nullable => 0 },
 );
 __PACKAGE__->set_primary_key("id");
 __PACKAGE__->has_many(
@@ -100,8 +102,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-05-24 15:32:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:U3aYCRwE4etekKaHdhEkIw
+# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-06-10 16:36:20
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:XDv1mOs12j5/ghda/EJ3ug
 
 # Add fake relationship to stored procedure table
 __PACKAGE__->has_many(
