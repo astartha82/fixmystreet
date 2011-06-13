@@ -220,6 +220,7 @@ foreach my $test (
             name   => 'Test User',
             email  => $user->email,
             anonymous => 0,
+            flagged => undef,
         },
         changes => {
             title => 'Edited Report',
@@ -237,6 +238,7 @@ foreach my $test (
             name   => 'Test User',
             email  => $user->email,
             anonymous => 0,
+            flagged => undef,
         },
         changes => {
             detail => 'Edited Detail',
@@ -254,12 +256,32 @@ foreach my $test (
             name   => 'Test User',
             email  => $user->email,
             anonymous => 0,
+            flagged => undef,
         },
         changes => {
             name => 'Edited User',
         },
         log_count => 3,
         log_entries => [ qw/edit edit edit/ ],
+        resend => 0,
+        user => $user,
+    },
+    {
+        description => 'edit report set flagged true',
+        fields => {
+            title  => 'Edited Report',
+            detail => 'Edited Detail',
+            state  => 'confirmed',
+            name   => 'Edited User',
+            email  => $user->email,
+            anonymous => 0,
+            flagged => undef,
+        },
+        changes => {
+            flagged => 'on',
+        },
+        log_count => 4,
+        log_entries => [ qw/edit edit edit edit/ ],
         resend => 0,
         user => $user,
     },
@@ -272,12 +294,13 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             email => $user2->email,
         },
-        log_count => 4,
-        log_entries => [ qw/edit edit edit edit/ ],
+        log_count => 5,
+        log_entries => [ qw/edit edit edit edit edit/ ],
         resend => 0,
         user => $user2,
     },
@@ -290,12 +313,13 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             state => 'unconfirmed'
         },
-        log_count => 5,
-        log_entries => [ qw/state_change edit edit edit edit/ ],
+        log_count => 6,
+        log_entries => [ qw/state_change edit edit edit edit edit/ ],
         resend => 0,
     },
     {
@@ -307,12 +331,13 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             state => 'confirmed'
         },
-        log_count => 6,
-        log_entries => [ qw/state_change state_change edit edit edit edit/ ],
+        log_count => 7,
+        log_entries => [ qw/state_change state_change edit edit edit edit edit/ ],
         resend => 0,
     },
     {
@@ -324,12 +349,13 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             state => 'fixed'
         },
-        log_count => 7,
-        log_entries => [ qw/state_change state_change state_change edit edit edit edit/ ],
+        log_count => 8,
+        log_entries => [ qw/state_change state_change state_change edit edit edit edit edit/ ],
         resend => 0,
     },
     {
@@ -341,12 +367,13 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             state => 'hidden'
         },
-        log_count => 8,
-        log_entries => [ qw/state_change state_change state_change state_change edit edit edit edit/ ],
+        log_count => 9,
+        log_entries => [ qw/state_change state_change state_change state_change edit edit edit edit edit/ ],
         resend => 0,
     },
     {
@@ -358,13 +385,14 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 0,
+            flagged => 'on',
         },
         changes => {
             state => 'confirmed',
             anonymous => 1,
         },
-        log_count => 10,
-        log_entries => [ qw/edit state_change state_change state_change state_change state_change edit edit edit edit/ ],
+        log_count => 11,
+        log_entries => [ qw/edit state_change state_change state_change state_change state_change edit edit edit edit edit/ ],
         resend => 0,
     },
     {
@@ -376,11 +404,12 @@ foreach my $test (
             name   => 'Edited User',
             email  => $user2->email,
             anonymous => 1,
+            flagged => 'on',
         },
         changes => {
         },
-        log_count => 11,
-        log_entries => [ qw/resend edit state_change state_change state_change state_change state_change edit edit edit edit/ ],
+        log_count => 12,
+        log_entries => [ qw/resend edit state_change state_change state_change state_change state_change edit edit edit edit edit/ ],
         resend => 1,
     },
 ) {
@@ -413,6 +442,7 @@ foreach my $test (
             $mech->content_lacks( 'type="submit" name="resend"', 'no resend button' );
         }
 
+        $test->{changes}->{flagged} = 1 if $test->{changes}->{flagged};
         is $report->$_, $test->{changes}->{$_}, "$_ updated" for grep { $_ ne 'email' } keys %{ $test->{changes} };
 
         if ( $test->{user} ) {
@@ -436,6 +466,7 @@ subtest 'change email to new user' => sub {
         name   => $report->name,
         email  => $report->user->email,
         anonymous => 1,
+        flagged => 'on',
     };
 
     is_deeply( $mech->visible_form_values(), $fields, 'initial form values' );
