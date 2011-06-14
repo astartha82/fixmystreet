@@ -2,6 +2,7 @@ package FixMyStreet::App::Controller::Reports;
 use Moose;
 use namespace::autoclean;
 
+use List::MoreUtils qw(zip);
 use POSIX qw(strcoll);
 use mySociety::MaPit;
 use mySociety::VotingArea;
@@ -50,8 +51,7 @@ sub index : Path : Args(0) {
     my @keys = sort { strcoll($areas_info->{$a}{name}, $areas_info->{$b}{name}) } keys %$areas_info;
     $c->stash->{areas_info_sorted} = [ map { $areas_info->{$_} } @keys ];
 
-    $c->forward( 'load_problems' );
-    $c->forward( 'group_problems' );
+    $c->forward( 'load_and_group_problems' );
 }
 
 =head2 index
@@ -78,8 +78,7 @@ sub ward : Path : Args(2) {
     $c->forward( 'ward_check', [ $ward ] )
         if $ward;
     $c->forward( 'load_parent' );
-    $c->forward( 'load_problems' );
-    $c->forward( 'group_problems' );
+    $c->forward( 'load_and_group_problems' );
     $c->forward( 'sort_problems' );
 
     $c->stash->{rss_url} = '/rss/reports/'
@@ -241,50 +240,52 @@ sub load_parent : Private {
     }
 }
 
-sub load_problems : Private {
+sub load_and_group_problems : Private {
     my ( $self, $c ) = @_;
 
     my $where = {
         state => [ 'confirmed', 'fixed' ]
     };
+    my @extra_cols = ();
     if ($c->stash->{ward}) {
         $where->{areas} = { 'like', '%' . $c->stash->{ward}->{id} . '%' }; # FIXME Check this is secure
+        push @extra_cols, 'title', 'detail';
     } elsif ($c->stash->{council}) {
         $where->{areas} = { 'like', '%' . $c->stash->{council}->{id} . '%' };
+        push @extra_cols, 'title', 'detail';
     }
     my $problems = $c->cobrand->problems->search(
         $where,
         {
             columns => [
-                'id', 'title', 'detail', 'council', 'state', 'areas',
+                'id', 'council', 'state', 'areas',
                 { duration => { extract => "epoch from current_timestamp-lastupdate" } },
                 { age      => { extract => "epoch from current_timestamp-confirmed"  } },
+                @extra_cols,
             ],
             order_by => { -desc => 'id' },
         }
     );
-    $c->stash->{problems} = [ $problems->all ];
-
-    return 1;
-}
- 
-sub group_problems : Private {
-    my ( $self, $c ) = @_;
+    $problems = $problems->cursor; # Raw DB cursor for speed
 
     my ( %fixed, %open );
     my $re_councils = join('|', keys %{$c->stash->{areas_info}});
-    foreach my $row (@{$c->stash->{problems}}) {
-        if (!$row->council) {
+    my @cols = ( 'id', 'council', 'state', 'areas', 'duration', 'age', 'title', 'detail' );
+    while ( my @problem = $problems->next ) {
+        my %problem = zip @cols, @problem;
+        if ( !$problem{council} ) {
             # Problem was not sent to any council, add to possible councils
-            my $areas = $row->areas;
-            while ($areas =~ /,($re_councils)(?=,)/g) {
-                add_row($row, $1, \%fixed, \%open);
+            while ($problem{areas} =~ /,($re_councils)(?=,)/g) {
+                add_row( \%problem, $1, \%fixed, \%open );
             }
         } else {
             # Add to councils it was sent to
-            foreach (@{ $row->councils }) {
+            (my $council = $problem{council}) =~ s/\|.*$//;
+            my @council = split( /,/, $council );
+            $problem{councils} = scalar @council;
+            foreach ( @council ) {
                 next if $c->stash->{council} && $_ != $c->stash->{council}->{id};
-                add_row($row, $_, \%fixed, \%open);
+                add_row( \%problem, $_, \%fixed, \%open );
             }
         }
     }
@@ -303,11 +304,11 @@ sub sort_problems : Private {
     my $open = $c->stash->{open};
 
     foreach (qw/new old/) {
-        $c->stash->{fixed}{$id}{$_} = [ sort { $a->get_column('duration') <=> $b->get_column('duration') } @{$fixed->{$id}{$_}} ]
+        $c->stash->{fixed}{$id}{$_} = [ sort { $a->{duration} <=> $b->{duration} } @{$fixed->{$id}{$_}} ]
             if $fixed->{$id}{$_};
     }
     foreach (qw/new older unknown/) {
-        $c->stash->{open}{$id}{$_} = [ sort { $a->get_column('age') <=> $b->get_column('age') } @{$open->{$id}{$_}} ]
+        $c->stash->{open}{$id}{$_} = [ sort { $a->{age} <=> $b->{age} } @{$open->{$id}{$_}} ]
             if $open->{$id}{$_};
     }
 }
@@ -329,17 +330,17 @@ sub redirect_area : Private {
     $c->res->redirect( $c->uri_for($url) );
 }
 
+my $fourweeks = 4*7*24*60*60;
 sub add_row {
-    my ($row, $council, $fixed, $open) = @_;
-    my $fourweeks = 4*7*24*60*60;
-    my $duration = ($row->get_column('duration') > 2 * $fourweeks) ? 'old' : 'new';
-    my $type = ($row->get_column('duration') > 2 * $fourweeks)
+    my ( $problem, $council, $fixed, $open ) = @_;
+    my $duration_str = ( $problem->{duration} > 2 * $fourweeks ) ? 'old' : 'new';
+    my $type = ( $problem->{duration} > 2 * $fourweeks )
         ? 'unknown'
-        : ($row->get_column('age') > $fourweeks ? 'older' : 'new');
+        : ($problem->{age} > $fourweeks ? 'older' : 'new');
     # Fixed problems are either old or new
-    push @{$fixed->{$council}{$duration}}, $row if $row->state eq 'fixed';
+    push @{$fixed->{$council}{$duration_str}}, $problem if $problem->{state} eq 'fixed';
     # Open problems are either unknown, older, or new
-    push @{$open->{$council}{$type}}, $row if $row->state eq 'confirmed';
+    push @{$open->{$council}{$type}}, $problem if $problem->{state} eq 'confirmed';
 }
 
 =head1 AUTHOR
