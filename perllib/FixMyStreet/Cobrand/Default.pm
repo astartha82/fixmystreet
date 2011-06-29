@@ -405,7 +405,8 @@ sub uri {
     $uri = URI->new( $uri );
     $uri->query_param( zoom => 3 )
       if $uri->query_param('lat') && !$uri->query_param('zoom');
-    $uri->query_param( map => $map_class ); # FIXME Only on /around, /report?
+
+    # $uri->query_param( map => $map_class ); # FIXME Only on /around, /report?
 
     return $uri;
 }
@@ -615,16 +616,7 @@ Return if we are the virtual host that sends email for this cobrand
 =cut
 
 sub email_host {
-    my $self               = shift;
-    my $cobrand_moniker_uc = uc( $self->moniker );
-
-    my $email_vhost =
-         mySociety::Config::get("EMAIL_VHOST_$cobrand_moniker_uc", '')
-      || mySociety::Config::get("EMAIL_VHOST")
-      || '';
-
-    return $email_vhost
-      && "http://$email_vhost" eq mySociety::Config::get("BASE_URL");
+    return 1;
 }
 
 =item remove_redundant_councils

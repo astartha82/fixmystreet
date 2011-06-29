@@ -8,7 +8,7 @@ use warnings;
 
 use base 'DBIx::Class::Core';
 
-__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime");
+__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime", "EncodedColumn");
 __PACKAGE__->table("users");
 __PACKAGE__->add_columns(
   "id",
@@ -49,8 +49,17 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-05-24 15:32:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Vo92xIsCQTLF6lBugzhHcA
+# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-06-23 15:49:48
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:T2JK+KyfoE2hkCLgreq1XQ
+
+__PACKAGE__->add_columns(
+    "password" => {
+        encode_column => 1,
+        encode_class => 'Crypt::Eksblowfish::Bcrypt',
+        encode_args => { cost => 8 },
+        encode_check_method => 'check_password',
+    },
+);
 
 use mySociety::EmailUtil;
 
@@ -72,16 +81,8 @@ sub check_for_errors {
 
     my %errors = ();
 
-    if ( $self->name !~ m/\S/ ) {
+    if ( !$self->name || $self->name !~ m/\S/ ) {
         $errors{name} = _('Please enter your name');
-    }
-    elsif (length( $self->name ) < 5
-        || $self->name !~ m/\s/
-        || $self->name =~ m/\ba\s*n+on+((y|o)mo?u?s)?(ly)?\b/i )
-    {
-        $errors{name} = _(
-'Please enter your full name, councils need this information - if you do not wish your name to be shown on the site, untick the box'
-        );
     }
 
     if ( $self->email !~ /\S/ ) {
@@ -113,6 +114,22 @@ sub answered_ever_reported {
       );
 
     return $has_answered->count > 0;
+}
+
+=head2 alert_for_problem
+
+Returns whether the user is already subscribed to an
+alert for the problem ID provided.
+
+=cut
+
+sub alert_for_problem {
+    my ( $self, $id ) = @_;
+
+    return $self->alerts->find( {
+        alert_type => 'new_updates',
+        parameter  => $id,
+    } );
 }
 
 1;

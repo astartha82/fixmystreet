@@ -11,9 +11,6 @@ use base 'FixMyStreet::Map::OSM';
 
 use strict;
 
-use constant ZOOM_LEVELS    => 5;
-use constant MIN_ZOOM_LEVEL => 13;
-
 # Is set by the JavaScript
 sub map_type {
     return '""';
@@ -24,7 +21,7 @@ sub map_template {
 }
 
 sub copyright {
-    return _('Map contains Ordnance Survey data &copy; Crown copyright and database right 2010. Microsoft');
+    return _('Map contains Ordnance Survey data &copy; Crown copyright and database right 2010.<br>&copy; 2011 <a href="http://www.bing.com/maps/">Microsoft</a>. &copy; AND, Navteq, Ordnance Survey.');
 }
 
 sub get_quadkey {

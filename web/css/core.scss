@@ -189,6 +189,22 @@ $map_width: 500px;
         text-align: center;
     }
 
+    #form_sign_in_yes {
+        float: left;
+        width: 47%;
+        padding-right: 1%;
+        border-right: solid 1px #999999;
+        margin-bottom: 1em;
+    }
+
+    #form_sign_in_no, #fieldset #form_sign_in_no {
+        float: right;
+        width: 47%;
+        padding-left: 1%;
+        clear: none;
+        margin-bottom: 1em;
+    }
+
     // Map
 
     #watermark {
@@ -210,6 +226,7 @@ $map_width: 500px;
 
     p#copyright {
         float: right;
+        text-align: right;
         margin: 0 0 1em 0;
         font-size: 78%;
     }
@@ -489,6 +506,11 @@ $map_width: 500px;
     //     white-space: nowrap;
     // }
 
+}
+
+.olControlAttribution {
+    bottom: 3px !important;
+    left: 3px;
 }
 
 // Printing, SCSS doesn't handle @media nesting

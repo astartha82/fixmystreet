@@ -8,7 +8,7 @@ use warnings;
 
 use base 'DBIx::Class::Core';
 
-__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime");
+__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime", "EncodedColumn");
 __PACKAGE__->table("comment");
 __PACKAGE__->add_columns(
   "id",
@@ -68,8 +68,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-05-24 15:32:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:71bSUgPf3uW607g2EGl/Vw
+# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-06-23 15:49:48
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:TYFusbxkOkAewaiZYZVJUA
 
 use DateTime::TimeZone;
 use Image::Size;
@@ -104,6 +104,9 @@ sub check_for_errors {
     my $self = shift;
 
     my %errors = ();
+
+    $errors{name} = _('Please enter your name')
+        if !$self->name || $self->name !~ m/\S/;
 
     $errors{update} = _('Please enter a message')
       unless $self->text =~ m/\S/;

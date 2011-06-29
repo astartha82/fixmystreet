@@ -32,7 +32,7 @@ sub confirm_problem : Path('/P') {
       $c->forward( 'load_auth_token', [ $token_code, 'problem' ] );
 
     # Load the problem
-    my $problem_id = $auth_token->data;
+    my $problem_id = $auth_token->data->{id};
     my $problem = $c->cobrand->problems->find( { id => $problem_id } )
       || $c->detach('token_error');
     $c->stash->{problem} = $problem;
@@ -158,7 +158,7 @@ sub load_questionnaire_id : Private {
     my ( $self, $c, $token_code ) = @_;
 
     # Set up error handling
-    $c->stash->{error_template} = 'questionnaire/error.html';
+    $c->stash->{error_template} = 'errors/generic.html';
     $c->stash->{message} = _("I'm afraid we couldn't validate that token. If you've copied the URL from an email, please check that you copied it exactly.\n");
 
     my $auth_token = $c->forward( 'load_auth_token', [ $token_code, 'questionnaire' ] );

@@ -13,10 +13,12 @@ sub country {
 
 sub set_lang_and_domain {
     my ( $self, $lang, $unicode, $dir ) = @_;
-    mySociety::Locale::negotiate_language(
-        'en-gb,English,en_GB|nb,Norwegian,nb_NO', 'nb' );
+    my $set_lang = mySociety::Locale::negotiate_language(
+        'en-gb,English,en_GB|nb,Norwegian,nb_NO', 'nb'
+    );
     mySociety::Locale::gettext_domain( 'FixMyStreet', $unicode, $dir );
     mySociety::Locale::change();
+    return $set_lang;
 }
 
 sub enter_postcode_text {
@@ -196,7 +198,6 @@ sub reports_council_check {
         my @area_types = $c->cobrand->area_types;
         my $areas_k = mySociety::MaPit::call('areas', $kommune, type => \@area_types);
         my $areas_f = mySociety::MaPit::call('areas', $fylke, type => \@area_types);
-        use Data::Dumper;
         if (keys %$areas_f == 1) {
             ($fylke) = values %$areas_f;
             foreach (values %$areas_k) {
