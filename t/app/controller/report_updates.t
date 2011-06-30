@@ -201,9 +201,12 @@ for my $test (
             fixed  => undef,
             add_alert => 1,
             may_show_name => undef,
+            remember_me => undef,
+            password_register => '',
+            password_sign_in => '',
         },
         changes => {},
-        field_errors => [ 'Please enter your email', 'Please enter a message' ]
+        field_errors => [ 'Please enter a message', 'Please enter your email', 'Please enter your name' ]
     },
     {
         desc => 'Invalid email, no message',
@@ -215,9 +218,12 @@ for my $test (
             fixed  => undef,
             add_alert => 1,
             may_show_name => undef,
+            remember_me => undef,
+            password_sign_in => '',
+            password_register => '',
         },
         changes => {},
-        field_errors => [ 'Please enter a valid email', 'Please enter a message' ]
+        field_errors => [ 'Please enter a message', 'Please enter a valid email', 'Please enter your name' ]
     },
     {
         desc => 'email with spaces, no message',
@@ -229,11 +235,14 @@ for my $test (
             fixed  => undef,
             add_alert => 1,
             may_show_name => undef,
+            remember_me => undef,
+            password_register => '',
+            password_sign_in => '',
         },
         changes => {
             rznvy => 'test@example.com',
         },
-        field_errors => [ 'Please enter a message' ]
+        field_errors => [ 'Please enter a message', 'Please enter your name' ]
     },
     {
         desc => 'email with uppercase, no message',
@@ -245,11 +254,14 @@ for my $test (
             fixed  => undef,
             add_alert => 1,
             may_show_name => undef,
+            remember_me => undef,
+            password_register => '',
+            password_sign_in => '',
         },
         changes => {
             rznvy => 'test@example.com',
         },
-        field_errors => [ 'Please enter a message' ]
+        field_errors => [ 'Please enter a message', 'Please enter your name' ]
     },
   )
 {
@@ -276,17 +288,22 @@ for my $test (
         initial_values => {
             name          => '',
             rznvy         => '',
-            may_show_name => undef,
+            may_show_name => 1,
             add_alert     => 1,
             photo         => '',
             update        => '',
             fixed         => undef,
+            remember_me => undef,
+            password_register => '',
+            password_sign_in => '',
         },
         form_values => {
             submit_update => 1,
             rznvy         => 'unregistered@example.com',
             update        => 'Update from an unregistered user',
             add_alert     => undef,
+            name          => 'Unreg User',
+            may_show_name => undef,
         },
         changes => {},
     },
@@ -295,17 +312,22 @@ for my $test (
         initial_values => {
             name          => '',
             rznvy         => '',
-            may_show_name => undef,
+            may_show_name => 1,
             add_alert     => 1,
             photo         => '',
             update        => '',
             fixed         => undef,
+            remember_me => undef,
+            password_register => '',
+            password_sign_in => '',
         },
         form_values => {
             submit_update => 1,
             rznvy         => 'unregistered@example.com',
             update        => 'update from an unregistered user',
             add_alert     => 1,
+            name          => 'Unreg User',
+            may_show_name => undef,
         },
         changes => {
             update => 'Update from an unregistered user',
@@ -384,19 +406,93 @@ for my $test (
 
 for my $test (
     {
-        desc => 'submit update for register user',
+        desc => 'submit an update for a non registered user, signing in with wrong password',
+        form_values => {
+            submit_update => 1,
+            rznvy         => 'registered@example.com',
+            update        => 'Update from a user',
+            add_alert     => undef,
+            password_sign_in => 'secret',
+        },
+        field_errors => [
+            'There was a problem with your email/password combination. Please try again.',
+            'Please enter your name', # FIXME Not really necessary error
+        ],
+    },
+    {
+        desc => 'submit an update for a non registered user and sign in',
+        form_values => {
+            submit_update => 1,
+            rznvy         => 'registered@example.com',
+            update        => 'Update from a user',
+            add_alert     => undef,
+            password_sign_in => 'secret2',
+        },
+        field_errors => [
+            'You have successfully signed in; please check and confirm your details are accurate:',
+        ],
+    }
+) {
+    subtest $test->{desc} => sub {
+        # Set things up
+        my $user = $mech->create_user_ok( $test->{form_values}->{rznvy} );
+        my $pw = 'secret2';
+        $user->update( { name => 'Mr Reg', password => $pw } );
+        $report->comments->delete;
+
+        $mech->log_out_ok();
+        $mech->clear_emails_ok();
+        $mech->get_ok("/report/$report_id");
+        $mech->submit_form_ok(
+            {
+                button => 'submit_sign_in',
+                with_fields => $test->{form_values}
+            },
+            'submit update'
+        );
+
+        is_deeply $mech->form_errors, $test->{field_errors}, 'check there were errors';
+
+        SKIP: {
+            skip( "Incorrect password", 5 ) unless $test->{form_values}{password_sign_in} eq $pw;
+
+            # Now submit with a name
+            $mech->submit_form_ok(
+                {
+                    with_fields => {
+                        name => 'Joe Bloggs',
+                    }
+                },
+                "submit good details"
+            );
+
+            is $mech->uri->path, "/report/" . $report_id, "redirected to report page";
+            $mech->email_count_is(0);
+
+            my $update = $report->comments->first;
+            ok $update, 'found update';
+            is $update->text, $test->{form_values}->{update}, 'update text';
+            is $update->user->email, $test->{form_values}->{rznvy}, 'update user';
+            is $update->state, 'confirmed', 'update confirmed';
+            $mech->delete_user( $update->user );
+        }
+    };
+}
+
+for my $test (
+    {
+        desc => 'submit update for registered user',
         initial_values => {
             name => 'Test User',
-            rznvy => 'test@example.com',
             may_show_name => 1,
             add_alert => 1,
             photo => '',
             update => '',
             fixed => undef,
         },
+        email  => 'test@example.com',
         fields => {
             submit_update => 1,
-            rznvy  => 'test@example.com',
             update => 'update from a registered user',
             add_alert => undef,
             fixed => undef,
@@ -410,19 +506,18 @@ for my $test (
         anonymous => 0,
     },
     {
-        desc => 'submit update for register user anonymously by unchecking',
+        desc => 'submit update for registered user anonymously by unchecking',
         initial_values => {
             name => 'Test User',
-            rznvy => 'test@example.com',
             may_show_name => 1,
             add_alert => 1,
             photo => '',
             update => '',
             fixed => undef,
         },
+        email  => 'test@example.com',
         fields => {
             submit_update => 1,
-            rznvy  => 'test@example.com',
             update => 'update from a registered user',
             may_show_name => undef,
             add_alert => undef,
@@ -437,47 +532,18 @@ for my $test (
         anonymous => 1,
     },
     {
-        desc => 'submit update for register user anonymously by deleting name',
+        desc => 'submit update for registered user and sign up',
         initial_values => {
             name => 'Test User',
-            rznvy => 'test@example.com',
             may_show_name => 1,
             add_alert => 1,
             photo => '',
             update => '',
             fixed => undef,
         },
+        email  => 'test@example.com',
         fields => {
             submit_update => 1,
-            name => '',
-            rznvy  => 'test@example.com',
-            update => 'update from a registered user',
-            may_show_name => 1,
-            add_alert => undef,
-            fixed => undef,
-        },
-        changed => {
-            update => 'Update from a registered user'
-        },
-        initial_banner => '',
-        endstate_banner => '',
-        alert => 0,
-        anonymous => 1,
-    },
-    {
-        desc => 'submit update for register user and sign up',
-        initial_values => {
-            name => 'Test User',
-            rznvy => 'test@example.com',
-            may_show_name => 1,
-            add_alert => 1,
-            photo => '',
-            update => '',
-            fixed => undef,
-        },
-        fields => {
-            submit_update => 1,
-            rznvy  => 'test@example.com',
             update => 'update from a registered user',
             add_alert => 1,
             fixed => undef,
@@ -491,21 +557,20 @@ for my $test (
         anonymous => 0,
     },
     {
-        desc => 'submit update for register user and mark fixed',
+        desc => 'submit update for registered user and mark fixed',
         initial_values => {
             name => 'Commenter',
-            rznvy => 'commenter@example.com',
             may_show_name => 1,
             add_alert => 1,
             photo => '',
             update => '',
             fixed => undef,
         },
+        email  => 'commenter@example.com',
         fields => {
             submit_update => 1,
-            rznvy  => 'commenter@example.com',
             update => 'update from a registered user',
-            add_alert => undef,
+            add_alert => 1,
             fixed => 1,
         },
         changed => {
@@ -513,9 +578,33 @@ for my $test (
         },
         initial_banner => '',
         endstate_banner => ' This problem has been fixed. ',
-        alert => 1, # we signed up for alerts before, do not unsign us
+        alert => 1,
         anonymous => 0,
     },
+    {
+        desc => 'submit another update for registered user and want no more alerts',
+        initial_values => {
+            name => 'Commenter',
+            may_show_name => 1,
+            add_alert => 1,
+            photo => '',
+            update => '',
+        },
+        email  => 'commenter@example.com',
+        fields => {
+            submit_update => 1,
+            update => 'another update from a registered user',
+            add_alert => undef,
+        },
+        changed => {
+            update => 'Another update from a registered user'
+        },
+        initial_banner => ' This problem has been fixed. ',
+        endstate_banner => ' This problem has been fixed. ',
+        alert => 0,
+        anonymous => 0,
+    },
+        # If logged in person unticks the box and already has an alert, they should be unsubscribed.
 ) {
     subtest $test->{desc} => sub {
         $mech->log_out_ok();
@@ -527,7 +616,7 @@ for my $test (
 
         $mech->clear_emails_ok();
 
-        $mech->log_in_ok( $test->{fields}->{rznvy} );
+        $mech->log_in_ok( $test->{email} );
         $mech->get_ok("/report/$report_id");
 
         my $values = $mech->visible_form_values( 'updateForm' );
@@ -557,13 +646,13 @@ for my $test (
         my $update = $report->comments->first;
         ok $update, 'found update';
         is $update->text, $results->{update}, 'update text';
-        is $update->user->email, $test->{fields}->{rznvy}, 'update user';
+        is $update->user->email, $test->{email}, 'update user';
         is $update->state, 'confirmed', 'update confirmed';
         is $update->anonymous, $test->{anonymous}, 'user anonymous';
 
         my $alert =
           FixMyStreet::App->model('DB::Alert')
-          ->find( { user => $user, alert_type => 'new_updates', confirmed => 1 } );
+          ->find( { user => $update->user, alert_type => 'new_updates', confirmed => 1, whendisabled => undef } );
 
         ok $test->{alert} ? $alert : !$alert, 'not signed up for alerts';
     };
@@ -574,16 +663,15 @@ foreach my $test (
         desc           => 'logged in reporter submits update and marks problem fixed',
         initial_values => {
             name          => 'Test User',
-            rznvy         => 'test@example.com',
             may_show_name => 1,
             add_alert     => 1,
             photo         => '',
             update        => '',
             fixed         => undef,
         },
+        email  => 'test@example.com',
         fields => {
             submit_update => 1,
-            rznvy         => 'test@example.com',
             update        => 'update from owner',
             add_alert     => undef,
             fixed         => 1,
@@ -593,7 +681,6 @@ foreach my $test (
         alert     => 1,    # we signed up for alerts before, do not unsign us
         anonymous => 0,
         answered  => 0,
-        login     => 1,
         path => '/report/update',
         content =>
 "Thanks, glad to hear it's been fixed! Could we just ask if you have ever reported a problem to a council before?",
@@ -603,16 +690,15 @@ foreach my $test (
 'logged in reporter submits update and marks problem fixed and has answered questionnaire',
         initial_values => {
             name          => 'Test User',
-            rznvy         => 'test@example.com',
             may_show_name => 1,
             add_alert     => 1,
             photo         => '',
             update        => '',
             fixed         => undef,
         },
+        email  => 'test@example.com',
         fields => {
             submit_update => 1,
-            rznvy         => 'test@example.com',
             update        => 'update from owner',
             add_alert     => undef,
             fixed         => 1,
@@ -622,7 +708,6 @@ foreach my $test (
         alert     => 1,    # we signed up for alerts before, do not unsign us
         anonymous => 0,
         answered  => 1,
-        login     => 1,
         path    => '/report/' . $report->id,
         content => $report->title,
     },
@@ -659,7 +744,7 @@ foreach my $test (
 
         $mech->clear_emails_ok();
 
-        $mech->log_in_ok( $test->{fields}->{rznvy} );
+        $mech->log_in_ok( $test->{email} );
         $mech->get_ok("/report/$report_id");
 
         my $values = $mech->visible_form_values('updateForm');
@@ -683,7 +768,7 @@ foreach my $test (
         my $update = $report->comments->first;
         ok $update, 'found update';
         is $update->text, $results->{update}, 'update text';
-        is $update->user->email, $test->{fields}->{rznvy}, 'update user';
+        is $update->user->email, $test->{email}, 'update user';
         is $update->state, 'confirmed', 'update confirmed';
         is $update->anonymous, $test->{anonymous}, 'user anonymous';
 

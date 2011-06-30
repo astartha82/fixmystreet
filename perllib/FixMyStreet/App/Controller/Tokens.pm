@@ -32,7 +32,7 @@ sub confirm_problem : Path('/P') {
       $c->forward( 'load_auth_token', [ $token_code, 'problem' ] );
 
     # Load the problem
-    my $problem_id = $auth_token->data;
+    my $problem_id = $auth_token->data->{id};
     my $problem = $c->cobrand->problems->find( { id => $problem_id } )
       || $c->detach('token_error');
     $c->stash->{problem} = $problem;
@@ -154,21 +154,31 @@ sub confirm_update : Path('/C') {
     return 1;
 }
 
-sub load_questionnaire_id : Private {
+sub load_questionnaire : Private {
     my ( $self, $c, $token_code ) = @_;
 
     # Set up error handling
-    $c->stash->{error_template} = 'questionnaire/error.html';
+    $c->stash->{error_template} = 'errors/generic.html';
     $c->stash->{message} = _("I'm afraid we couldn't validate that token. If you've copied the URL from an email, please check that you copied it exactly.\n");
 
     my $auth_token = $c->forward( 'load_auth_token', [ $token_code, 'questionnaire' ] );
     $c->stash->{id} = $auth_token->data;
     $c->stash->{token} = $token_code;
+
+    my $questionnaire = $c->model('DB::Questionnaire')->find(
+        { id => $c->stash->{id} },
+        { prefetch => 'problem' }
+    );
+    $c->detach('/questionnaire/missing_problem') unless $questionnaire;
+    $c->stash->{questionnaire} = $questionnaire;
 }
 
 sub questionnaire : Path('/Q') : Args(1) {
     my ( $self, $c, $token_code ) = @_;
-    $c->forward( 'load_questionnaire_id', [ $token_code ] );
+    $c->forward( 'load_questionnaire', [ $token_code ] );
+
+    $c->authenticate( { email => $c->stash->{questionnaire}->problem->user->email }, 'no_password' );
+    $c->set_session_cookie_expire(0);
     $c->forward( '/questionnaire/index');
 }
 

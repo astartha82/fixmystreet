@@ -51,8 +51,7 @@ __PACKAGE__->config(
 
     'Plugin::Session' => {    # Catalyst::Plugin::Session::Store::DBIC
         dbic_class     => 'DB::Session',
-        expires        => 3600 * 24 * 7 * 6, # 6 months
-        cookie_expires => 0
+        expires        => 3600 * 24 * 7 * 4, # 4 weeks
     },
 
     'Plugin::Authentication' => {
@@ -61,8 +60,7 @@ __PACKAGE__->config(
             credential => {    # Catalyst::Authentication::Credential::Password
                 class              => 'Password',
                 password_field     => 'password',
-                password_type      => 'hashed',
-                password_hash_type => 'SHA-1',
+                password_type      => 'self_check',
             },
             store => {         # Catalyst::Authentication::Store::DBIx::Class
                 class      => 'DBIx::Class',
@@ -182,7 +180,8 @@ sub setup_request {
 
     Memcached::set_namespace( FixMyStreet->config('BCI_DB_NAME') . ":" );
 
-    FixMyStreet::Map::set_map_class( $c->request->param('map') );
+    my $map = $host =~ /^osm\./ ? 'OSM' : $c->req->param('map');
+    FixMyStreet::Map::set_map_class( $map );
 
     return $c;
 }

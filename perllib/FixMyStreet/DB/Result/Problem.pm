@@ -8,7 +8,7 @@ use warnings;
 
 use base 'DBIx::Class::Core';
 
-__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime");
+__PACKAGE__->load_components("FilterColumn", "InflateColumn::DateTime", "EncodedColumn");
 __PACKAGE__->table("problem");
 __PACKAGE__->add_columns(
   "id",
@@ -102,8 +102,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-06-10 16:36:20
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:XDv1mOs12j5/ghda/EJ3ug
+# Created by DBIx::Class::Schema::Loader v0.07010 @ 2011-06-23 15:49:48
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:3sw/1dqxlTvcWEI/eJTm4w
 
 # Add fake relationship to stored procedure table
 __PACKAGE__->has_many(
@@ -190,7 +190,7 @@ sub check_for_errors {
       unless $self->council
           && $self->council =~ m/^(?:-1|[\d,]+(?:\|[\d,]+)?)$/;
 
-    if ( $self->name !~ m/\S/ ) {
+    if ( !$self->name || $self->name !~ m/\S/ ) {
         $errors{name} = _('Please enter your name');
     }
     elsif (length( $self->name ) < 5
@@ -366,8 +366,7 @@ sub meta_line {
     return $meta;
 }
 
-# TODO Some/much of this could be moved to the template
-sub duration_string {
+sub body {
     my ( $problem, $c ) = @_;
     my $body;
     if ($problem->external_body) {
@@ -389,6 +388,13 @@ sub duration_string {
             } @councils
         );
     }
+    return $body;
+}
+
+# TODO Some/much of this could be moved to the template
+sub duration_string {
+    my ( $problem, $c ) = @_;
+    my $body = $problem->body( $c );
     return sprintf(_('Sent to %s %s later'), $body,
         Utils::prettify_duration($problem->whensent_local->epoch - $problem->confirmed_local->epoch, 'minute')
     );

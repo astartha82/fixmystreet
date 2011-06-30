@@ -20,19 +20,15 @@ Creates an update to a report
 sub report_update : Path : Args(0) {
     my ( $self, $c ) = @_;
 
-    # if there's no id then we should just stop now
-    $c->detach( '/page_error_404_not_found', [ _('Unknown problem ID') ] )
-      unless $c->req->param('id');
-
-         $c->forward( '/report/load_problem_or_display_error', [ $c->req->param('id') ] )
-      && $c->forward('process_user')
-      && $c->forward('process_update')
-      && $c->forward('/report/new/process_photo')
-      && $c->forward('check_for_errors')
+    $c->forward( '/report/load_problem_or_display_error', [ $c->req->param('id') ] );
+    $c->forward('process_update');
+    $c->forward('process_user');
+    $c->forward('/report/new/process_photo');
+    $c->forward('check_for_errors')
       or $c->go( '/report/display', [ $c->req->param('id') ] );
 
-    return $c->forward('save_update')
-      && $c->forward('redirect_or_confirm_creation');
+    $c->forward('save_update');
+    $c->forward('redirect_or_confirm_creation');
 }
 
 sub confirm : Private {
@@ -69,6 +65,10 @@ sub update_problem : Private {
         }
     }
 
+    if ( $update->mark_open && $update->user->id == $problem->user->id ) {
+        $problem->state('confirmed');
+    }
+
     $problem->lastupdate( \'ms_current_timestamp()' );
     $problem->update;
 
@@ -77,14 +77,6 @@ sub update_problem : Private {
     if ($display_questionnaire) {
         $c->detach('/questionnaire/creator_fixed');
     }
-
-    return 1;
-}
-
-sub display_confirmation : Private {
-    my ( $self, $c ) = @_;
-
-    $c->stash->{template} = 'tokens/confirm_update.html';
 
     return 1;
 }
@@ -98,25 +90,43 @@ Load user from the database or prepare a new one.
 sub process_user : Private {
     my ( $self, $c ) = @_;
 
-    # FIXME - If user already logged in use them regardless
+    my $update = $c->stash->{update};
+
+    if ( $c->user_exists ) {
+        my $user = $c->user->obj;
+        my $name = scalar $c->req->param('name');
+        $user->name( Utils::trim_text( $name ) ) if $name;
+        $update->user( $user );
+        return 1;
+    }
 
     # Extract all the params to a hash to make them easier to work with
-    my %params =    #
-      map { $_ => scalar $c->req->param($_) }    #
-      ( 'rznvy', 'name' );
+    my %params = map { $_ => scalar $c->req->param($_) }
+      ( 'rznvy', 'name', 'password_register' );
 
     # cleanup the email address
     my $email = $params{rznvy} ? lc $params{rznvy} : '';
     $email =~ s{\s+}{}g;
 
-    my $update_user = $c->model('DB::User')->find_or_new( { email => $email } );
+    $update->user( $c->model('DB::User')->find_or_new( { email => $email } ) )
+        unless $update->user;
 
-    # set the user's name if they don't have one
-    $update_user->name( Utils::trim_text( $params{name} ) )
-      unless $update_user->name;
+    # The user is trying to sign in. We only care about email from the params.
+    if ( $c->req->param('submit_sign_in') ) {
+        unless ( $c->forward( '/auth/sign_in', [ $email ] ) ) {
+            $c->stash->{field_errors}->{password} = _('There was a problem with your email/password combination. Please try again.');
+            return 1;
+        }
+        my $user = $c->user->obj;
+        $update->user( $user );
+        $update->name( $user->name );
+        $c->stash->{field_errors}->{name} = _('You have successfully signed in; please check and confirm your details are accurate:');
+        return 1;
+    }
 
-    $c->stash->{update_user} = $update_user;
-    $c->stash->{email}       = $update_user->email;
+    $update->user->name( Utils::trim_text( $params{name} ) )
+        if $params{name};
+    $update->user->password( Utils::trim_text( $params{password_register} ) );
 
     return 1;
 }
@@ -135,25 +145,24 @@ sub process_update : Private {
     my ( $self, $c ) = @_;
 
     my %params =
-      map { $_ => scalar $c->req->param($_) } ( 'update', 'name', 'fixed' );
+      map { $_ => scalar $c->req->param($_) } ( 'update', 'name', 'fixed', 'reopen' );
 
     $params{update} =
       Utils::cleanup_text( $params{update}, { allow_multiline => 1 } );
 
     my $name = Utils::trim_text( $params{name} );
+    my $anonymous = $c->req->param('may_show_name') ? 0 : 1;
 
-    my $anonymous = 1;
-
-    $anonymous = 0 if ( $name && $c->req->param('may_show_name') );
+    $params{reopen} = 0 unless $c->user && $c->user->id == $c->stash->{problem}->user->id;
 
     my $update = $c->model('DB::Comment')->new(
         {
             text         => $params{update},
             name         => $name,
             problem      => $c->stash->{problem},
-            user         => $c->stash->{update_user},
             state        => 'unconfirmed',
             mark_fixed   => $params{fixed} ? 1 : 0,
+            mark_open    => $params{reopen} ? 1 : 0,
             cobrand      => $c->cobrand->moniker,
             cobrand_data => $c->cobrand->extra_update_data,
             lang         => $c->stash->{lang_code},
@@ -162,9 +171,7 @@ sub process_update : Private {
     );
 
     $c->stash->{update}        = $update;
-    $c->stash->{update_text}   = $update->text;
     $c->stash->{add_alert}     = $c->req->param('add_alert');
-    $c->stash->{may_show_name} = ' checked' if $c->req->param('may_show_name');
 
     return 1;
 }
@@ -181,25 +188,27 @@ sub check_for_errors : Private {
     my ( $self, $c ) = @_;
 
     # let the model check for errors
+    $c->stash->{field_errors} ||= {};
     my %field_errors = (
-        %{ $c->stash->{update_user}->check_for_errors },
+        %{ $c->stash->{field_errors} },
+        %{ $c->stash->{update}->user->check_for_errors },
         %{ $c->stash->{update}->check_for_errors },
     );
 
-    # we don't care if there are errors with this...
-    delete $field_errors{name};
+    if ( my $photo_error  = delete $c->stash->{photo_error} ) {
+        $field_errors{photo} = $photo_error;
+    }
 
     # all good if no errors
     return 1
       unless ( scalar keys %field_errors
-        || ( $c->stash->{errors} && scalar @{ $c->stash->{errors} } )
-        || $c->stash->{photo_error} );
+        || ( $c->stash->{errors} && scalar @{ $c->stash->{errors} } ) );
 
     $c->stash->{field_errors} = \%field_errors;
 
     $c->stash->{errors} ||= [];
-    push @{ $c->stash->{errors} },
-      _('There were problems with your update. Please see below.');
+    #push @{ $c->stash->{errors} },
+    #  _('There were problems with your update. Please see below.');
 
     return;
 }
@@ -213,14 +222,14 @@ Save the update and the user as appropriate.
 sub save_update : Private {
     my ( $self, $c ) = @_;
 
-    my $user   = $c->stash->{update_user};
     my $update = $c->stash->{update};
 
-    if ( !$user->in_storage ) {
-        $user->insert;
+    if ( !$update->user->in_storage ) {
+        $update->user->insert;
     }
-    elsif ( $c->user && $c->user->id == $user->id ) {
-        $user->update;
+    elsif ( $c->user && $c->user->id == $update->user->id ) {
+        # Logged in and same user, so can confirm update straight away
+        $update->user->update;
         $update->confirm;
     }
 
@@ -255,8 +264,8 @@ sub redirect_or_confirm_creation : Private {
 
     # If confirmed send the user straight there.
     if ( $update->confirmed ) {
-        $c->forward( 'signup_for_alerts' );
         $c->forward( 'update_problem' );
+        $c->forward( 'signup_for_alerts' );
         my $report_uri = $c->uri_for( '/report', $update->problem_id );
         $c->res->redirect($report_uri);
         $c->detach;
@@ -289,7 +298,8 @@ sub redirect_or_confirm_creation : Private {
 =head2 signup_for_alerts
 
 If the user has selected to be signed up for alerts then create a
-new_updates alert.
+new_updates alert. Or if they're logged in and they've unticked the
+box, disable their alert.
 
 NB: this does not check if they are a registered user so that should
 happen before calling this.
@@ -309,8 +319,10 @@ sub signup_for_alerts : Private {
             cobrand_data => $update->cobrand_data,
             lang         => $update->lang,
         );
-
         $alert->confirm();
+
+    } elsif ( $c->user && ( my $alert = $c->user->alert_for_problem($c->stash->{update}->problem_id) ) ) {
+        $alert->disable();
     }
 
     return 1;
